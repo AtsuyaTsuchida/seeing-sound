@@ -1,162 +1,130 @@
 # Seeing Birdsong
 
-*English | [日本語](README.ja.md)*
+任意の音（鳥のさえずり・音楽など）を **3D の「音の地図」** に変換します。録音を短い区間に分割し、各区間を音響的な性質で空間に配置して発光するノードにし、ネットワークで結び、再生に同期して光らせます。
 
-Turn any audio (birdsong, music, …) into a **3D "map of sound"**: each short
-segment of the recording becomes a glowing node, positioned by its acoustic
-character, connected into a network, and lit up in sync with playback.
-
-Inspired by Lucio Arese's *Seeing Birdsong*. This is an independent
-re-implementation built around a transparent, **interpretable descriptor space**
-(the axes are named spectral descriptors — not a black-box embedding).
+Lucio Arese の *Seeing Birdsong* に着想を得た**独立した再実装**です。中身は**解釈可能な記述子空間**（軸が名前のついたスペクトル記述子＝ブラックボックス埋め込みではない）で構成しています。
 
 ![demo](docs/demo.png)
 
 ---
 
-## What it does
+## 何をするか
 
 ```
-audio ─▶ segment ─▶ spectral descriptors ─▶ 3D placement ─▶ color / size / glow ─▶ render
-        (onset)     (centroid, spread,        (3 chosen          (centroid → hue,
-                     crest, flux, …)           descriptors        amplitude → size,
-                                               = X / Y / Z)       playback → glow)
+音 ─▶ 区間分割 ─▶ スペクトル記述子 ─▶ 3D配置 ─▶ 色/サイズ/発光 ─▶ 描画
+      (onset)      (centroid, spread,   (選んだ3つの    (centroid→色相,
+                    crest, flux …)       記述子=X/Y/Z)   振幅→サイズ,
+                                                         再生→発光)
 ```
 
-- **Segment** the recording into syllables/notes (onset detection).
-- **Measure** ~16 spectral descriptors per segment (spectral centroid, spread,
-  crest, flatness, contrast, slope, flux, rolloff, dominant freq, F0,
-  centroid–F0 gap, tonality, HNR, amplitude, …).
-- **Place** each segment in 3D using three chosen descriptors as the X/Y/Z axes
-  (default: spread × centroid × crest). Because the axes are real descriptors,
-  the layout is explainable. A UMAP variant is also provided for automatic
-  structure discovery.
-- **Map** the remaining channels to visuals: color = spectral centroid,
-  size = amplitude, edges = nearest neighbours, and a **glow that follows the
-  playhead** (each node flashes when its segment sounds, with an attack burst).
+- **分割**：録音を音節/音符単位に分割（オンセット検出）。
+- **計測**：区間ごとに約16種のスペクトル記述子を算出（spectral centroid, spread, crest, flatness, contrast, slope, flux, rolloff, dominant freq, F0, centroid–F0 gap, tonality, HNR, amplitude …）。
+- **配置**：選んだ3つの記述子をX/Y/Z軸にして3D配置（既定：spread × centroid × crest）。軸が実在の記述子なので「なぜそこにあるか」を説明できます。自動で構造を見つけたい場合の UMAP 版も同梱。
+- **対応づけ**：残りのチャンネルを見た目に割当て＝色=spectral centroid、サイズ=振幅、エッジ=近傍、そして**再生ヘッドに追従する発光**（区間が鳴る瞬間にそのノードが閃光＝アタックバースト付き）。
 
-It works on **any audio** — the included samples are synthetic test tones, and
-it has been tried on solo/chamber classical recordings as well.
+**どんな音にも使えます** — 同梱サンプルは合成テスト音ですが、独奏/室内楽のクラシック録音でも試しています。
 
 ---
 
-## Front-ends
+## フロントエンド
 
-There are two ways to view the result:
+結果は2通りで見られます：
 
-1. **Web (no install beyond Python)** — interactive HTML viewers:
-   - `viewer.html` — three.js scene (glowing nodes + edges, click a node to play
-     that segment, timeline-synced playback).
-   - `birdsong.html` — Plotly 3D scatter (UMAP manifold).
-   - `descriptor_space.html` — Plotly 3D scatter with **dropdowns to pick which
-     descriptor goes on each axis / color** (the "Timbre Space" view).
-2. **TouchDesigner** — `td/NHK2026_3Dtest.toe`, a ready-to-open project with
-   instanced spheres, bloom, environment lighting, a follow camera + an orbiting
-   overview camera, audio playback, and an on-screen **control panel** (see GUI
-   below). Authored in TouchDesigner 2025.30060.
+1. **Web（Python以外のインストール不要）** — インタラクティブHTML：
+   - `viewer.html` — three.jsシーン（発光ノード＋エッジ、ノードをクリックでその区間を再生、再生同期）。
+   - `birdsong.html` — Plotly 3D散布（UMAP多様体）。
+   - `descriptor_space.html` — 各軸/色に割り当てる**記述子をドロップダウンで選べる** Plotly 3D散布（"Timbre Space"ビュー）。
+2. **TouchDesigner** — `td/NHK2026_3Dtest.toe`。開くだけで使えるプロジェクト（インスタンス球＋ブルーム＋環境光、追従カメラ＋周回する俯瞰カメラ、音声再生、画面上の**コントロールパネル**つき＝下記GUI）。TouchDesigner 2025.30060 で作成。
 
 ---
 
-## Quick start
+## クイックスタート
 
-### 1. Install (Python 3.11 recommended)
+### 1. インストール（Python 3.11 推奨）
 
 ```bash
 python3.11 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ```
 
-### 2. Generate the data
+### 2. データ生成
 
 ```bash
-# segment + features + UMAP + clusters  ->  out/td_points.csv, scene.json, viewer.html, ...
+# 区間分割 + 特徴量 + UMAP + クラスタ  ->  out/td_points.csv, scene.json, viewer.html ...
 ./venv/bin/python pipeline.py --audio audio --out out
 
-# replace node positions with interpretable descriptor axes + color/size/labels
+# ノード位置を「解釈可能な記述子軸」に置き換え + 色/サイズ/ラベル付与
 cp out/td_points.csv out/td_points_umap_backup.csv
 ./venv/bin/python td_descriptor_coords.py \
     --points out/td_points_umap_backup.csv --audio audio \
     --axes spread,centroid,crest --color centroid --out out
 
-# (optional) configurable descriptor-space dashboard
+# (任意) 軸を切り替えられる記述子ダッシュボード
 ./venv/bin/python descriptor_space.py --audio audio --out out
 ```
 
-Use your own audio by dropping files into `audio/` (wav/flac/mp3/m4a/…).
+自分の音源は `audio/` に入れるだけ（wav/flac/mp3/m4a …）。
 
-### 3a. View in the browser
+### 3a. ブラウザで見る
 
 ```bash
 cd out && python3 -m http.server 8731
-# open http://localhost:8731/viewer.html  (or birdsong.html / descriptor_space.html)
+# http://localhost:8731/viewer.html を開く（または birdsong.html / descriptor_space.html）
 ```
-(Serving over HTTP is required — `file://` is blocked by the browser for fetch/audio.)
+（`fetch`と音声のため **HTTP配信が必須**。`file://` はブラウザに弾かれます。）
 
-### 3b. View in TouchDesigner
+### 3b. TouchDesignerで見る
 
-Open `td/NHK2026_3Dtest.toe`. It reads `out/td_points.csv` / `td_edges.csv` and
-the audio. To load a fresh dataset (after re-running the Python step), the project
-has a one-shot refresh: in the TouchDesigner textport run
-`mod('/seeing_birdsong/td_refresh').refresh()` (reload tables → recenter →
-re-frame the overview camera → re-cook).
+`td/NHK2026_3Dtest.toe` を開く。`out/td_points.csv` / `td_edges.csv` と音源を読みます。Python側を再実行して新しいデータを読み込むには、textportで `mod('/seeing_birdsong/td_refresh').refresh()`（テーブル再読込→再センタリング→俯瞰カメラ再フレーミング→再クック）。
 
 ---
 
-## GUI (TouchDesigner)
+## GUI（TouchDesigner）
 
-Select the `seeing_birdsong` component and open its parameters → **Controls**
-page (also available as an on-screen `gui` panel inside the component):
+`seeing_birdsong` コンポーネントを選択 → パラメータの **Controls** ページ（コンポーネント内の画面上 `gui` パネルでも操作可）：
 
-| Control | Effect |
+| コントロール | 効果 |
 |---|---|
-| Node Size | base sphere size |
-| Line Thickness | edge ribbon width |
-| Density | overall cloud scale (higher = packed tighter) |
-| Glow | bloom intensity |
-| Edge Opacity | edge line opacity |
-| BG Brightness | background grey level |
-| Orbit Speed | overview-camera rotation speed |
+| Node Size | 球の基準サイズ |
+| Line Thickness | エッジ（リボン）の太さ |
+| Density | 全体の密度＝雲のスケール（高いほど密集）|
+| Glow | ブルームの強さ |
+| Edge Opacity | エッジの不透明度 |
+| BG Brightness | 背景グレーの明るさ |
+| Orbit Speed | 俯瞰カメラの周回速度 |
 
 ---
 
-## Video export (32:9, with audio)
+## 動画書き出し（32:9・音声付き）
 
-The repo includes a deterministic export flow used to render a side-by-side
-**follow-camera | overview-camera** video at 3840×1080 with synced audio:
-render each frame for an explicit time `T` to a PNG sequence, then mux with the
-source audio via `ffmpeg`:
+「追従カメラ｜俯瞰カメラ」を横並びにした 3840×1080・音声同期の動画を作る決定論的フローを同梱：各フレームを明示的な時間 `T` で連番PNGに描き出し、`ffmpeg` で元音源と多重化します。
 
 ```bash
 ffmpeg -framerate 30 -i out/frames/f%04d.png -i audio/your.wav \
     -c:v libx264 -pix_fmt yuv420p -crf 18 -c:a aac -shortest out/seeing_birdsong_32x9.mp4
 ```
 
-(See `docs/DEV_NOTES_ja.md` for the frame-writer details. Real-time recording in
-TouchDesigner desyncs A/V because it cooks faster than wall-clock, so the
-frame-sequence + ffmpeg route is used instead.)
+（フレーム書き出しの詳細は `docs/DEV_NOTES_ja.md`。TouchDesignerの実時間録画は実時間より速くクックしてA/Vがずれるため、連番PNG＋ffmpeg方式を採用しています。）
 
 ---
 
-## Files
+## ファイル構成
 
 ```
-pipeline.py             segment → features → UMAP → clusters; writes TD/web data
-td_descriptor_coords.py descriptor axes → 3D coords (+ color / amplitude / labels)
-descriptor_space.py     per-frame descriptor dashboard (configurable-axis 3D scatter)
-viewer.html             three.js viewer (glow + click-to-play + timeline)
-td/NHK2026_3Dtest.toe    TouchDesigner project
-audio/                  sample input (synthetic test tones)
-docs/DEV_NOTES_ja.md    detailed build notes (Japanese)
+pipeline.py             区間分割→特徴→UMAP→クラスタ。TD/Web用データを出力
+td_descriptor_coords.py 記述子軸→3D座標（＋色/振幅/ラベル）
+descriptor_space.py     フレーム単位の記述子ダッシュボード（軸切替3D散布）
+viewer.html             three.jsビューア（発光＋クリック再生＋再生同期）
+td/NHK2026_3Dtest.toe   TouchDesignerプロジェクト
+audio/                  サンプル入力（合成テスト音）
+docs/DEV_NOTES_ja.md    詳細な制作ノート（日本語）
 ```
 
 ---
 
-## Credits & licensing
+## クレジット & ライセンス
 
-- Concept inspiration: **Lucio Arese — *Seeing Birdsong*** (independent
-  re-implementation; not affiliated).
-- Included sample audio (`audio/synthetic_*.wav`) is procedurally generated.
-- The classical demo used a US-public-domain 1921 recording (Fritz Kreisler /
-  Carl Lamson, "To Spring", from the Internet Archive Great 78 Project); it is
-  **not** included here — bring your own audio.
-- Code: MIT (see `LICENSE`).
+- コンセプトの着想：**Lucio Arese — *Seeing Birdsong***（独立した再実装。無関係・非公式）。
+- 同梱サンプル音源（`audio/synthetic_*.wav`）は手続き生成。
+- クラシックのデモには米国パブリックドメインの1921年録音（Fritz Kreisler / Carl Lamson「To Spring」、Internet Archive Great 78 Project）を使用。**本リポジトリには含めていません** — 各自の音源をご用意ください。
+- コード：MIT（`LICENSE` 参照）。
