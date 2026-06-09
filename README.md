@@ -125,6 +125,7 @@ docs/DEV_NOTES_ja.md    詳細な制作ノート（日本語）
 ## クレジット & ライセンス
 
 - コンセプトの着想：**Lucio Arese — *Seeing Birdsong***（独立した再実装。無関係・非公式）。
+  - 参照動画：[Seeing Birdsong — Project Overview (YouTube)](https://www.youtube.com/watch?v=a8t9X90s2S0)
 - 同梱サンプル音源（`audio/synthetic_*.wav`）は手続き生成。
 - クラシックのデモには米国パブリックドメインの1921年録音（Fritz Kreisler / Carl Lamson「To Spring」、Internet Archive Great 78 Project）を使用。**本リポジトリには含めていません** — 各自の音源をご用意ください。
 - コード：MIT（`LICENSE` 参照）。
