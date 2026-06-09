@@ -1,5 +1,7 @@
 # Seeing Birdsong
 
+*English | [日本語](README.ja.md)*
+
 Turn any audio (birdsong, music, …) into a **3D "map of sound"**: each short
 segment of the recording becomes a glowing node, positioned by its acoustic
 character, connected into a network, and lit up in sync with playback.
