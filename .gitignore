@@ -1,0 +1,24 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Generated outputs
+_test_out/
+out/
+*.mp4
+
+# Local / large test data (not part of the repo)
+_test_audio/
+audio_classical/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# TouchDesigner local backups
+Backup/
+*.toe.*
+
+# Local tooling config
+.claude/

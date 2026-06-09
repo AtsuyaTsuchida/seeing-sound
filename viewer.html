@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Seeing Birdsong — manifold</title>
+<style>
+  :root { --fg:#cfe0ff; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#04050a; overflow:hidden;
+    font-family:-apple-system,"Helvetica Neue",sans-serif; color:var(--fg); }
+  #c { display:block; width:100%; height:100%; }
+  #title { position:fixed; left:18px; top:14px; pointer-events:none;
+    font-size:13px; letter-spacing:.28em; opacity:.8; }
+  #title b { font-weight:600; letter-spacing:.3em; }
+  #hud { position:fixed; left:18px; bottom:16px; font-size:11px; line-height:1.7;
+    opacity:.55; pointer-events:none; }
+  #bar { position:fixed; right:18px; top:14px; display:flex; gap:8px; align-items:center;
+    font-size:12px; }
+  #bar button, #bar select { background:rgba(20,26,48,.85); color:#dce8ff;
+    border:1px solid rgba(120,160,255,.35); border-radius:6px; padding:5px 11px;
+    font-size:12px; cursor:pointer; }
+  #bar button:hover { border-color:#8fb4ff; }
+  #clock { font-variant-numeric:tabular-nums; opacity:.7; min-width:84px; text-align:right; }
+  #tip { position:fixed; pointer-events:none; padding:7px 10px; font-size:11px;
+    background:rgba(8,10,20,.82); border:1px solid rgba(120,160,255,.35);
+    border-radius:6px; color:#dce8ff; transform:translate(12px,12px);
+    white-space:nowrap; display:none; box-shadow:0 0 18px rgba(80,120,255,.25); }
+  #tip b { color:#8fb4ff; }
+  #loading { position:fixed; inset:0; display:flex; align-items:center;
+    justify-content:center; font-size:13px; letter-spacing:.2em; opacity:.7; }
+</style>
+</head>
+<body>
+<div id="title"><b>SEEING BIRDSONG</b> &nbsp;· avian vocalization manifold</div>
+<div id="bar">
+  <select id="file"></select>
+  <button id="play">▶ play</button>
+  <span id="clock">0.00 / 0.00 s</span>
+</div>
+<div id="hud">drag: rotate &nbsp;·&nbsp; scroll: zoom &nbsp;·&nbsp; click a node: 1音節 &nbsp;·&nbsp; <b>▶/space: 時間に沿って音と画を同期再生</b></div>
+<div id="tip"></div>
+<div id="loading">loading scene…</div>
+<canvas id="c"></canvas>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const SCALE = 70;
+const tip = document.getElementById('tip');
+
+// ---- renderer / scene / camera --------------------------------------------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x04050a, 0.0032);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 4000);
+const CAM_D = SCALE * 2.4;
+camera.position.set(0, 0, CAM_D);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.06;
+controls.autoRotate = true; controls.autoRotateSpeed = 0.3;
+
+// ---- bloom -----------------------------------------------------------------
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.15, 0.6, 0.0);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ---- soft circular sprite --------------------------------------------------
+function glowSprite() {
+  const s = 128, cv = document.createElement('canvas'); cv.width = cv.height = s;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.85)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.25)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,s,s);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function clusterColor(c) {
+  if (c < 0) return new THREE.Color(0.30, 0.32, 0.46);
+  return new THREE.Color().setHSL((c * 0.61803398875) % 1, 0.85, 0.62);
+}
+
+// ---- load scene ------------------------------------------------------------
+const data = await fetch('scene.json').then(r => r.json());
+const P = data.points;
+document.getElementById('loading').remove();
+
+const ctr = [0,0,0];
+P.forEach(p => { ctr[0]+=p.x; ctr[1]+=p.y; ctr[2]+=p.z; });
+ctr.forEach((_,i)=>ctr[i]/=P.length);
+let ext = 1e-6;
+P.forEach(p => ext = Math.max(ext, Math.abs(p.x-ctr[0]), Math.abs(p.y-ctr[1]), Math.abs(p.z-ctr[2])));
+const norm = SCALE / ext;
+const pos = new Float32Array(P.length*3), col = new Float32Array(P.length*3);
+const glow = new Float32Array(P.length);          // 0..1 per-node 発光（再生で駆動）
+P.forEach((p,i) => {
+  pos[i*3]   = (p.x-ctr[0])*norm;
+  pos[i*3+1] = (p.y-ctr[1])*norm;
+  pos[i*3+2] = (p.z-ctr[2])*norm;
+  const c = clusterColor(p.cluster);
+  col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+});
+
+// ---- points: 頂点ごとに発光を制御する ShaderMaterial -----------------------
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+geo.setAttribute('color',    new THREE.BufferAttribute(col,3));
+geo.setAttribute('aGlow',    new THREE.BufferAttribute(glow,1));
+
+const ptMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTex:   { value: glowSprite() },
+    uScale: { value: CAM_D },
+    uPix:   { value: renderer.getPixelRatio() },
+  },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: `
+    attribute float aGlow; attribute vec3 color;
+    uniform float uScale, uPix;
+    varying vec3 vCol; varying float vGlow;
+    void main(){
+      vCol = color; vGlow = aGlow;
+      vec4 mv = modelViewMatrix * vec4(position,1.0);
+      gl_PointSize = (5.0 + aGlow*22.0) * (uScale / -mv.z) * uPix;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform sampler2D uTex;
+    varying vec3 vCol; varying float vGlow;
+    void main(){
+      vec4 t = texture2D(uTex, gl_PointCoord);
+      if (t.a < 0.01) discard;
+      vec3 c = vCol * (0.45 + vGlow*3.0) + vec3(vGlow*0.6);
+      gl_FragColor = vec4(c, 1.0) * t;
+    }`,
+});
+const points = new THREE.Points(geo, ptMat);
+scene.add(points);
+
+// edges
+if (data.edges && data.edges.length) {
+  const ep = new Float32Array(data.edges.length*6);
+  data.edges.forEach((e,k) => {
+    for (let a=0;a<3;a++){ ep[k*6+a]=pos[e[0]*3+a]; ep[k*6+3+a]=pos[e[1]*3+a]; }
+  });
+  const eg = new THREE.BufferGeometry();
+  eg.setAttribute('position', new THREE.BufferAttribute(ep,3));
+  scene.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({
+    color:0x5878ff, transparent:true, opacity:0.10,
+    blending:THREE.AdditiveBlending, depthWrite:false })));
+}
+
+// 再生ヘッド（時間軸を進む光点）
+const head = new THREE.Mesh(
+  new THREE.SphereGeometry(SCALE*0.018, 16, 16),
+  new THREE.MeshBasicMaterial({ color:0xffffff }));
+head.visible = false; scene.add(head);
+
+// ---- per-file index & order ------------------------------------------------
+const files = [...new Set(P.map(p=>p.file))];
+const byFile = {};                          // file -> 時間順のindex配列
+files.forEach(f => byFile[f] = P.map((p,i)=>[i,p]).filter(x=>x[1].file===f)
+  .sort((a,b)=>a[1].start-b[1].start).map(x=>x[0]));
+const selEl = document.getElementById('file');
+files.forEach(f => { const o=document.createElement('option'); o.value=f; o.textContent=f; selEl.appendChild(o); });
+
+// ---- Web Audio -------------------------------------------------------------
+const actx = new (window.AudioContext||window.webkitAudioContext)();
+const bufCache = new Map(); let curSrc = null;
+async function getBuffer(file) {
+  if (bufCache.has(file)) return bufCache.get(file);
+  const ab = await fetch('audio/'+encodeURIComponent(file)).then(r=>r.arrayBuffer());
+  const buf = await actx.decodeAudioData(ab.slice(0));
+  bufCache.set(file, buf); return buf;
+}
+function stopAudio(){ if (curSrc){ try{curSrc.stop();}catch(e){} curSrc=null; } }
+
+// 単発：1音節だけ再生
+async function playSeg(p){
+  if (actx.state==='suspended') await actx.resume();
+  const buf = await getBuffer(p.file); stopAudio();
+  const s = actx.createBufferSource(); s.buffer=buf; s.connect(actx.destination);
+  s.start(0, p.start, Math.max(0.05, p.end-p.start)); curSrc=s;
+}
+
+// ---- タイムライン再生：音をファイル全体で流しつつ画を時間同期 -------------
+let playing = false, playFile = null, t0 = 0, dur = 0;
+async function startTimeline(file){
+  if (actx.state==='suspended') await actx.resume();
+  const buf = await getBuffer(file); stopAudio();
+  glow.fill(0);
+  const s = actx.createBufferSource(); s.buffer=buf; s.connect(actx.destination);
+  s.start(0); curSrc=s; s.onended = () => { if (playFile===file) stopTimeline(); };
+  playFile = file; dur = buf.duration; t0 = actx.currentTime;
+  playing = true; controls.autoRotate = false; head.visible = true;
+  document.getElementById('play').textContent = '⏸ stop';
+}
+function stopTimeline(){
+  playing = false; stopAudio(); head.visible = false;
+  document.getElementById('play').textContent = '▶ play';
+}
+document.getElementById('play').onclick = () =>
+  playing ? stopTimeline() : startTimeline(selEl.value);
+addEventListener('keydown', e => { if (e.code==='Space'){ e.preventDefault();
+  playing ? stopTimeline() : startTimeline(selEl.value); }});
+
+// ---- picking (単発再生) ----------------------------------------------------
+const ray = new THREE.Raycaster(); ray.params.Points.threshold = SCALE*0.03;
+const mouse = new THREE.Vector2();
+function pick(ev){
+  mouse.x=(ev.clientX/innerWidth)*2-1; mouse.y=-(ev.clientY/innerHeight)*2+1;
+  ray.setFromCamera(mouse, camera);
+  const h = ray.intersectObject(points); return h.length ? h[0].index : -1;
+}
+addEventListener('pointermove', ev => {
+  const i = pick(ev);
+  if (i>=0){ const p=P[i];
+    tip.style.display='block'; tip.style.left=ev.clientX+'px'; tip.style.top=ev.clientY+'px';
+    tip.innerHTML=`<b>${p.file}</b><br>t = ${p.start.toFixed(2)}–${p.end.toFixed(2)} s`
+      +`<br>centroid ${p.centroid_hz??'–'} Hz · f0 ${p.f0_hz??'–'} Hz<br>cluster ${p.cluster}`;
+    canvas.style.cursor='pointer';
+  } else { tip.style.display='none'; canvas.style.cursor='grab'; }
+});
+addEventListener('pointerdown', ev => {
+  if (ev.target.closest('#bar')) return;
+  const i = pick(ev);
+  if (i>=0){ selEl.value = P[i].file; if (!playing) playSeg(P[i]); }
+});
+
+// ---- loop ------------------------------------------------------------------
+const clock = document.getElementById('clock');
+const tmpV = new THREE.Vector3();
+addEventListener('resize', () => {
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight);
+  ptMat.uniforms.uPix.value = renderer.getPixelRatio();
+});
+function tick(){
+  requestAnimationFrame(tick);
+  controls.update();
+
+  if (playing){
+    const t = actx.currentTime - t0;                 // ファイル先頭からの経過秒
+    let active = -1;
+    for (let k=0;k<glow.length;k++) glow[k] *= 0.90;  // 全体を減衰（残光）
+    for (const i of byFile[playFile]){
+      const p = P[i];
+      if (t >= p.start - 0.01 && t < p.end + 0.06){ glow[i] = 1.0; active = i; }
+    }
+    if (active>=0){
+      tmpV.set(pos[active*3], pos[active*3+1], pos[active*3+2]);
+      head.position.lerp(tmpV, 0.35);                 // 再生ヘッドが該当ノードへ移動
+    }
+    geo.attributes.aGlow.needsUpdate = true;
+    clock.textContent = `${t.toFixed(2)} / ${dur.toFixed(2)} s`;
+    if (t > dur + 0.1) stopTimeline();
+  }
+
+  composer.render();
+}
+tick();
+</script>
+</body>
+</html>
